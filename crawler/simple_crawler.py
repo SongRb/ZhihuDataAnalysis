@@ -2,8 +2,10 @@ import collections
 import json
 import os
 import pickle
+import time
 
 from zhihu_api import ZhihuSession
+from zhihu_settings import *
 
 
 class ZhihuCrawler:
@@ -41,14 +43,33 @@ class ZhihuCrawler:
             print 'Userdata of {0} added'.format(id)
 
             followers = json.loads(self.session.get_followers_raw(id, 0, 20))
-            for people in followers['data']:
-                id_to_crawl = people['url_token']
-                if id_to_crawl not in self.database['user']:
-                    print 'get', id_to_crawl
-                    self.database['user'][id_to_crawl] = dict()
-                    self.database['user'][id_to_crawl][
-                        'simple_description'] = people
-                    self.user_queue.append(id_to_crawl)
+
+            while not followers['paging']['is_end']:
+                next_url = followers['paging']['next']
+                print next_url
+                for people in followers['data']:
+                    id_to_crawl = people['url_token']
+                    if id_to_crawl not in self.database['user']:
+                        self.database['user'][id_to_crawl] = dict()
+                        self.database['user'][id_to_crawl][
+                            'simple_description'] = people
+                        self.user_queue.append(id_to_crawl)
+                time.sleep(WAIT_TIME)
+                followers = json.loads(self.session.req_get(next_url))
+
+            followees = json.loads(self.session.get_followees_raw(id, 0, 20))
+            while not followees['paging']['is_end']:
+                next_url = followees['paging']['next']
+                print next_url
+                for people in followees['data']:
+                    id_to_crawl = people['url_token']
+                    if id_to_crawl not in self.database['user']:
+                        self.database['user'][id_to_crawl] = dict()
+                        self.database['user'][id_to_crawl][
+                            'simple_description'] = people
+                        self.user_queue.append(id_to_crawl)
+                time.sleep(WAIT_TIME)
+                followees = json.loads(self.session.req_get(next_url))
 
     def save_data(self):
         with open('data', 'w') as f:
@@ -73,13 +94,3 @@ class ZhihuCrawler:
     @staticmethod
     def bfs():
         pass
-
-
-def main():
-    test = ZhihuCrawler()
-    test.crawl_people('san-mu-84-3-42')
-    test.save_data()
-
-
-if __name__ == '__main__':
-    main()
