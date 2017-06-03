@@ -3,4 +3,4 @@ TASK_FOLDER = './.crawler_tasks/'
 
 HTML_PARSER = 'lxml'
 
-WAIT_TIME = 1.5
+WAIT_TIME = 5

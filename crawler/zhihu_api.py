@@ -237,8 +237,13 @@ class ZhihuSession():
             tmp_result = json.loads(self._get_userdata_api(section=attr.value,
                                                            start=0, user=user,
                                                            pagesize=20))
-            result[attr.value]['num'] = tmp_result['paging']['totals']
-            result[attr.value]['data'].extend(tmp_result['data'])
+            time.sleep(WAIT_TIME)
+            print attr.value
+            if len(tmp_result['data']) != 0:
+                result[attr.value]['num'] = tmp_result['paging']['totals']
+                result[attr.value]['data'].extend(tmp_result['data'])
+            else:
+                result[attr.value]['num'] = 0
 
             while not tmp_result['paging']['is_end']:
                 next_url = tmp_result['paging']['next']

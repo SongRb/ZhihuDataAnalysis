@@ -28,7 +28,7 @@ class ZhihuCrawler:
 
         count = 0
         while not len(self.user_queue) == 0:
-            if count > 20:
+            if count > 10:
                 self.save_user_queue()
                 self.save_data()
                 return
@@ -43,8 +43,7 @@ class ZhihuCrawler:
             print 'Userdata of {0} added'.format(id)
 
             followers = json.loads(self.session.get_followers_raw(id, 0, 20))
-
-            while not followers['paging']['is_end']:
+            while True:
                 next_url = followers['paging']['next']
                 print next_url
                 for people in followers['data']:
@@ -55,10 +54,12 @@ class ZhihuCrawler:
                             'simple_description'] = people
                         self.user_queue.append(id_to_crawl)
                 time.sleep(WAIT_TIME)
+                if followers['paging']['is_end']:
+                    break
                 followers = json.loads(self.session.req_get(next_url))
 
             followees = json.loads(self.session.get_followees_raw(id, 0, 20))
-            while not followees['paging']['is_end']:
+            while True:
                 next_url = followees['paging']['next']
                 print next_url
                 for people in followees['data']:
@@ -69,6 +70,8 @@ class ZhihuCrawler:
                             'simple_description'] = people
                         self.user_queue.append(id_to_crawl)
                 time.sleep(WAIT_TIME)
+                if followees['paging']['is_end']:
+                    break
                 followees = json.loads(self.session.req_get(next_url))
 
     def save_data(self):
