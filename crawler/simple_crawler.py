@@ -33,21 +33,28 @@ class ZhihuCrawler:
                 self.save_data()
                 return
             count += 1
+            self.save_user_queue()
             id = self.user_queue.popleft()
             print 'Crawling:', id
-
+            if id in self.database['user'] and 'all_data' in self.database[ \
+                    'user'][id]:
+                continue
             self.database['user'][id]['all_data'] = \
-                self.session.get_all_userdata(id)
-            self.save_data()
-            self.save_user_queue()
-            print 'Userdata of {0} added'.format(id)
+                self.session.get_all_userdata(id, has_follow=False)
 
             followers = json.loads(self.session.get_followers_raw(id, 0, 20))
+            self.database['user'][id]['all_data']['followers'] = dict()
+            self.database['user'][id]['all_data']['followers']['num'] = \
+                followers['paging']['totals']
+            self.database['user'][id]['all_data']['followers']['data'] = list()
+            all_followers = self.database['user'][id]['all_data']['followers'][
+                'data']
             while True:
                 next_url = followers['paging']['next']
-                print next_url
+
                 for people in followers['data']:
                     id_to_crawl = people['url_token']
+                    all_followers.append(id_to_crawl)
                     if id_to_crawl not in self.database['user']:
                         self.database['user'][id_to_crawl] = dict()
                         self.database['user'][id_to_crawl][
@@ -56,14 +63,26 @@ class ZhihuCrawler:
                 time.sleep(WAIT_TIME)
                 if followers['paging']['is_end']:
                     break
+                print next_url
                 followers = json.loads(self.session.req_get(next_url))
 
+            self.save_user_queue()
+            self.save_data()
+
+
             followees = json.loads(self.session.get_followees_raw(id, 0, 20))
+            self.database['user'][id]['all_data']['followees'] = dict()
+            self.database['user'][id]['all_data']['followees']['num'] = \
+                followees['paging']['totals']
+            self.database['user'][id]['all_data']['followees']['data'] = list()
+            all_followees = self.database['user'][id]['all_data']['followees'][
+                'data']
             while True:
                 next_url = followees['paging']['next']
-                print next_url
+
                 for people in followees['data']:
                     id_to_crawl = people['url_token']
+                    all_followees.append(id_to_crawl)
                     if id_to_crawl not in self.database['user']:
                         self.database['user'][id_to_crawl] = dict()
                         self.database['user'][id_to_crawl][
@@ -72,7 +91,14 @@ class ZhihuCrawler:
                 time.sleep(WAIT_TIME)
                 if followees['paging']['is_end']:
                     break
+                print next_url
                 followees = json.loads(self.session.req_get(next_url))
+
+            self.save_user_queue()
+            self.save_data()
+            print 'Userdata of {0} added'.format(id)
+
+
 
     def save_data(self):
         with open('data', 'w') as f:

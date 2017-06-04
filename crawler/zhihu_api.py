@@ -59,8 +59,6 @@ class ZhihuSession():
         self._header_with_xsrf['X-Xsrftoken'] = self._xsrf
         self.load_cookies()
 
-
-
     def get_xsrf(self):
         index_url = 'https://www.zhihu.com'
         index_page = self.session.get(index_url, headers=REQUEST_HEADERS)
@@ -227,18 +225,26 @@ class ZhihuSession():
                                       user,
                                       start, pagesize)
 
-    def get_all_userdata(self, user):
+    def get_all_userdata(self, user, has_follow):
         result = dict()
         for name, attr in UserAttrAPIStr.__members__.items():
-            start = 0
+            if not has_follow and (attr.value ==
+                                       UserAttrAPIStr.followees.value
+                                   or attr.value == UserAttrAPIStr.followers.value):
+                continue
+            print 'Crawling:', attr.value,
             result[attr.value] = dict()
             result[attr.value]['data'] = list()
 
             tmp_result = json.loads(self._get_userdata_api(section=attr.value,
                                                            start=0, user=user,
                                                            pagesize=20))
+            try:
+                print 'Total:', tmp_result['paging']['totals']
+            except KeyError:
+                print 'Total: 0'
             time.sleep(WAIT_TIME)
-            print attr.value
+
             if len(tmp_result['data']) != 0:
                 result[attr.value]['num'] = tmp_result['paging']['totals']
                 result[attr.value]['data'].extend(tmp_result['data'])
@@ -257,7 +263,7 @@ class ZhihuSession():
                 except requests.exceptions.ConnectionError:
                     print '\n\nError:', next_url
                     time.sleep(WAIT_TIME)
-
+            print
         return result
 
     def get_article_content_raw(self, article):
@@ -316,7 +322,12 @@ class ZhihuSession():
 
         if cookies is None:
             cookies = self.cook_dict
-
-        return requests.get(url, headers=headers,
-                            data=data, cookies=cookies).text
-
+        try:
+            result = requests.get(url, headers=headers,
+                                  data=data, cookies=cookies).text
+        except requests.exceptions.ConnectionError:
+            print 'Bad url found, retry after 30s'
+            time.sleep(30)
+            result = requests.get(url, headers=headers,
+                                  data=data, cookies=cookies).text
+        return result
