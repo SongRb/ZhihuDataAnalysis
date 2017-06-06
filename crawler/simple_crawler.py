@@ -1,7 +1,7 @@
+import cPickle as pickle
 import collections
 import json
 import os
-import pickle
 import time
 
 from zhihu_api import ZhihuSession
