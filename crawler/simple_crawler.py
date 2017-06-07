@@ -14,11 +14,11 @@ except ImportError:
 
 
 class ZhihuCrawler:
-    def __init__(self):
+    def __init__(self, using_database=True):
         self.database = dict()
         self.user_queue = collections.deque()
-        self.load_data()
-        self.load_user_queue()
+        self.load_data(using_database)
+        self.load_user_queue(using_database)
         self.session = ZhihuSession()
 
         session = ZhihuSession()
@@ -27,130 +27,117 @@ class ZhihuCrawler:
         print 'login succeed'
 
     def crawl_people(self, root=None, curr_url=None):
-        if root is not None:
-            self.user_queue.append(root)
-            self.database['user'][root] = dict()
+        attr_list = self.session.get_user_attr_list()
 
-        count = 0
-        while not len(self.user_queue) == 0:
-            if count > 10:
-                self.save_user_queue()
-                self.save_data()
-                return
-            count += 1
-            if curr_url is None:
+        if root is None and curr_url is None:
+            return
+
+        if curr_url is None:
+            self.user_queue.append(root)
+
+        next_url = curr_url
+        while True:
+            # User has not been crawled ever
+            attr_index = 0
+            user_attr = attr_list[attr_index]
+            if next_url is None:
                 self.save_user_queue()
                 id = self.user_queue.popleft()
-                print 'Crawling:', id
+
+                # this user has already crawled
                 if id in self.database['user'] and 'all_data' in self.database[ \
                         'user'][id]:
                     continue
-                self.database['user'][id]['all_data'] = \
-                    self.session.get_all_userdata(id, has_follow=False)
+
+                self.database['user'][id] = dict()
+                self.database['user'][id]['all_data'] = dict()
+                print 'Crawling:', id
+
+                next_url = 'http://www.zhihu.com/api/v4/members/' \
+                           '{0}/{1}?limit=20&offset=0'.format(
+                    id, user_attr)
+            else:
+                print 'Restoring from previous state'
+                print next_url
+                user_attr = self.session.get_api_attr(next_url)
+                attr_index = attr_list.index(user_attr)
+                id = root
+
+            retry_count = 0
+            while True:
+                try:
+                    url_response = json.loads(self.session.req_get(next_url))
+                    retry_count = 0
+                except:
+                    self.save_user_queue()
+                    self.save_data()
+                    self.save_current_url(next_url)
+                    retry_count += 1
+                    self.notifier('Zhihu Crawler',
+                                  '{0} is in a error state'.format(
+                                      next_url))
+
+                    if retry_count > 3:
+                        self.notifier('Zhihu Crawler', 'Exit due to '
+                                                       'previous error '
+                                                       'state')
+                        exit(-1)
+                    continue
+
+                if url_response['paging']['is_start']:
+                    print '\nCrawling', user_attr,
+                    self.database['user'][id]['all_data'][
+                        user_attr] = dict()
+                    try:
+                        self.database['user'][id]['all_data'][user_attr][
+                            'num'] = url_response['paging']['totals']
+                    except KeyError:
+                        self.database['user'][id]['all_data'][user_attr][
+                            'num'] = 0
+
+                    print 'Total:', self.database['user'][id]['all_data'][
+                        user_attr]['num']
+
+                    self.database['user'][id]['all_data'][user_attr][
+                        'data'] = list()
+
+                print next_url
+                current_attr_list = \
+                    self.database['user'][id]['all_data'][user_attr][
+                        'data']
+
+                if user_attr == 'followers' or user_attr == 'followees':
+                    for people in url_response['data']:
+                        id_to_crawl = people['url_token']
+                        current_attr_list.append(id_to_crawl)
+                        if id_to_crawl not in self.database['user']:
+                            self.database['user'][id_to_crawl] = dict()
+                            self.database['user'][id_to_crawl][
+                                'simple_description'] = people
+                            self.user_queue.append(id_to_crawl)
+
+                else:
+                    current_attr_list.extend(url_response['data'])
+
+                time.sleep(WAIT_TIME)
+                self.save_user_queue()
                 self.save_data()
 
-            print 'Starting crawling next people process: '
-            if curr_url is None or 'followers' in curr_url:
-                if curr_url is None:
-                    followers = json.loads(
-                        self.session.get_followers_raw(id, 0, 20))
-                    self.database['user'][id]['all_data']['followers'] = dict()
-                    self.database['user'][id]['all_data']['followers']['num'] = \
-                        followers['paging']['totals']
-                    self.database['user'][id]['all_data']['followers'][
-                        'data'] = list()
-                    all_followers = \
-                        self.database['user'][id]['all_data']['followers'][
-                            'data']
-                else:
-                    followers = json.loads(self.session.req_get(curr_url))
-                retry_count = 0
-                while True:
-                    next_url = followers['paging']['next']
-
-                    for people in followers['data']:
-                        id_to_crawl = people['url_token']
-                        all_followers.append(id_to_crawl)
-                        if id_to_crawl not in self.database['user']:
-                            self.database['user'][id_to_crawl] = dict()
-                            self.database['user'][id_to_crawl][
-                                'simple_description'] = people
-                            self.user_queue.append(id_to_crawl)
-                    time.sleep(WAIT_TIME)
-                    if followers['paging']['is_end']:
+                if url_response['paging']['is_end']:
+                    if attr_index == len(attr_list) - 1:
+                        next_url = None
                         break
-                    print next_url
-                    try:
-                        followers = json.loads(self.session.req_get(next_url))
-                        retry_count = 0
-                    except:
-                        self.save_user_queue()
-                        self.save_data()
-                        self.save_current_url(next_url)
-                        retry_count += 1
-                        self.notifier('Zhihu Crawler', '{0} is in a error '
-                                                       'state'.format(
-                            next_url))
-                        if retry_count > 3:
-                            self.notifier('Zhihu Crawler', 'Exit due to '
-                                                           'previous error '
-                                                           'state')
-                            exit(-1)
-
-            self.save_user_queue()
-            self.save_data()
-
-            if curr_url is None or 'followees' in curr_url:
-                if curr_url is None:
-                    followees = json.loads(
-                        self.session.get_followees_raw(id, 0, 20))
-                    self.database['user'][id]['all_data']['followees'] = dict()
-                    self.database['user'][id]['all_data']['followees']['num'] = \
-                        followees['paging']['totals']
-                    self.database['user'][id]['all_data']['followees'][
-                        'data'] = list()
-                    all_followees = \
-                        self.database['user'][id]['all_data']['followees'][
-                            'data']
+                    else:
+                        attr_index += 1
+                        user_attr = attr_list[attr_index]
+                        next_url = 'http://www.zhihu.com/api/v4/members/' \
+                                   '{0}/{1}?limit=20&offset=0'.format(
+                            id, user_attr)
                 else:
-                    followees = json.loads(self.session.req_get(curr_url))
-                retry_count = 0
-                while True:
-                    next_url = followees['paging']['next']
+                    next_url = url_response['paging']['next']
 
-                    for people in followees['data']:
-                        id_to_crawl = people['url_token']
-                        all_followees.append(id_to_crawl)
-                        if id_to_crawl not in self.database['user']:
-                            self.database['user'][id_to_crawl] = dict()
-                            self.database['user'][id_to_crawl][
-                                'simple_description'] = people
-                            self.user_queue.append(id_to_crawl)
-                    time.sleep(WAIT_TIME)
-                    if followees['paging']['is_end']:
-                        break
-                    print next_url
-                    try:
-                        followees = json.loads(self.session.req_get(next_url))
-                        retry_count = 0
-                    except:
-                        self.save_user_queue()
-                        self.save_data()
-                        self.save_current_url(next_url)
-                        retry_count += 1
-                        self.notifier('Zhihu Crawler', '{0} is in a error '
-                                                       'state'.format(
-                            next_url))
-                        if retry_count > 3:
-                            self.notifier('Zhihu Crawler', 'Exit due to '
-                                                           'previous error '
-                                                           'state')
-                            exit(-1)
-
-            self.save_user_queue()
-            self.save_data()
-
-            print 'Userdata of {0} added'.format(id)
+            if len(self.user_queue) == 0:
+                break
 
     def save_data(self):
         with open('data', 'w') as f:
@@ -164,8 +151,8 @@ class ZhihuCrawler:
         with open('current_url', 'w') as f:
             f.write(url)
 
-    def load_data(self):
-        if os.path.exists('data'):
+    def load_data(self, using_database):
+        if os.path.exists('data') and using_database:
             print 'Loading database from local file...'
             with open('data', 'r') as f:
                 self.database = pickle.load(f)
@@ -173,16 +160,12 @@ class ZhihuCrawler:
         else:
             self.database['user'] = dict()
 
-    def load_user_queue(self):
-        if os.path.exists('user_queue'):
+    def load_user_queue(self, using_database):
+        if os.path.exists('user_queue') and using_database:
             print 'Loading user queue from local file...'
             with open('user_queue', 'r') as f:
                 self.user_queue = pickle.load(f)
                 print 'Completed!'
-
-    @staticmethod
-    def bfs():
-        pass
 
     @staticmethod
     def notifier(title, message):

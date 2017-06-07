@@ -326,8 +326,20 @@ class ZhihuSession():
             result = requests.get(url, headers=headers,
                                   data=data, cookies=cookies).text
         except requests.exceptions.ConnectionError:
-            print 'Bad url found, retry after 30s'
-            time.sleep(30)
+            print 'Bad url found, retry after {0}s'.format(
+                str(ERROR_WAIT_TIME))
+            time.sleep(ERROR_WAIT_TIME)
             result = requests.get(url, headers=headers,
                                   data=data, cookies=cookies).text
         return result
+
+    @staticmethod
+    def get_api_attr(url):
+        return \
+            url.split('www.zhihu.com/api/v4/members/')[1].split('?')[0].split(
+                '/')[1]
+
+    @staticmethod
+    def get_user_attr_list():
+        return [attr.value for name, attr in
+                UserAttrAPIStr.__members__.items()]
