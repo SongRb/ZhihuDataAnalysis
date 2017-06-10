@@ -1,7 +1,6 @@
 import cPickle as pickle
 import collections
 import json
-import os
 import time
 
 from zhihu_api import ZhihuSession
@@ -159,30 +158,31 @@ class ZhihuCrawler:
                 break
 
     def save_data(self):
-        with open('data', 'w') as f:
-            pickle.dump(self.database, f)
+        with open(USER_DATABASE_PATH, 'w') as f:
+            pickle.dump(self.database['user'], f)
 
     def save_user_queue(self):
-        with open('user_queue', 'w') as f:
+        with open(USER_QUEUE_PATH, 'w') as f:
             pickle.dump(self.user_queue, f)
 
     def save_current_url(self, url):
-        with open('current_url', 'w') as f:
+        with open(CURRENT_URL_PATH, 'w') as f:
             f.write(url)
 
     def load_data(self, using_database):
-        if os.path.exists('data') and using_database:
+        if os.path.exists(USER_DATABASE_PATH) and \
+                using_database:
             print 'Loading database from local file...'
-            with open('data', 'r') as f:
-                self.database = pickle.load(f)
+            with open(USER_DATABASE_PATH, 'r') as f:
+                self.database['user'] = pickle.load(f)
                 print 'Completed!'
         else:
             self.database['user'] = dict()
 
     def load_user_queue(self, using_database):
-        if os.path.exists('user_queue') and using_database:
+        if os.path.exists(USER_QUEUE_PATH) and using_database:
             print 'Loading user queue from local file...'
-            with open('user_queue', 'r') as f:
+            with open(USER_QUEUE_PATH, 'r') as f:
                 self.user_queue = pickle.load(f)
                 print 'Completed!'
 

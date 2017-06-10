@@ -72,17 +72,17 @@ class ZhihuSession():
         t = str(int(time.time() * 1000))
         captcha_url = 'https://www.zhihu.com/captcha.gif?r=' + t + "&type=login"
         r = self.session.get(captcha_url, headers=REQUEST_HEADERS)
-        with open('captcha.jpg', 'wb') as f:
+        with open(CAPTCHA_PATH, 'wb') as f:
             f.write(r.content)
             f.close()
         try:
-            im = Image.open('captcha.jpg')
+            im = Image.open(CAPTCHA_PATH)
             im.show()
             im.close()
         except:
             print(
-                u'请到 %s 目录找到captcha.jpg 手动输入' % os.path.abspath('captcha.jpg'))
-        captcha = raw_input("please input the captcha\n>")
+                u'请到 %s 目录找到captcha.jpg 手动输入' % os.path.abspath(CAPTCHA_PATH))
+        captcha = raw_input("Please input the captcha\n>")
         return captcha
 
     def is_login(self):
@@ -97,8 +97,8 @@ class ZhihuSession():
             return False
 
     def login(self):
-        if os.path.exists('login_info'):
-            with open('login_info', 'r') as fin:
+        if os.path.exists(ACCOUNT_INFO_PATH):
+            with open(ACCOUNT_INFO_PATH, 'r') as fin:
                 account = fin.readline().strip()
                 password = fin.readline().strip()
             print 'Email:', account
@@ -141,7 +141,7 @@ class ZhihuSession():
         self.session.cookies.save()
 
     def load_cookies_file(self):
-        if os.path.exists('cookies'):
+        if os.path.exists(COOKIES_PATH):
             self.session.cookies.load(ignore_discard=True)
             for i in list(self.session.cookies):
                 self.cook_dict[i.name] = i.value
@@ -153,7 +153,7 @@ class ZhihuSession():
             return False
 
     def load_cookies(self):
-        self.session.cookies = cookielib.LWPCookieJar(filename='cookies')
+        self.session.cookies = cookielib.LWPCookieJar(filename=COOKIES_PATH)
         if self.load_cookies_file() and self.is_login():
             return True
         else:
