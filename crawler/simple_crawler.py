@@ -20,13 +20,11 @@ class ZhihuCrawler:
         self.load_user_queue(using_database)
         self.session = ZhihuSession()
 
-        session = ZhihuSession()
-        if not session.is_login():
-            session.login()
+        if not self.session.is_login():
+            self.session.login()
         print 'login succeed'
 
-    def crawl_people(self, root=None, curr_url=None, add_queue=True,
-                     filter_V=False):
+    def crawl_people(self, root=None, curr_url=None, add_queue=True):
         attr_list = self.session.get_user_attr_list()
 
         if root is not None:
@@ -39,25 +37,26 @@ class ZhihuCrawler:
             user_attr = attr_list[attr_index]
             if next_url is None:
                 self.save_user_queue()
-                id = self.user_queue.popleft()
+                user_id = self.user_queue.popleft()
 
                 # this user has already crawled
-                if id in self.database['user'] and 'all_data' in self.database[ \
-                        'user'][id]:
+                if user_id in self.database['user'] and 'all_data' in \
+                        self.database[ \
+                                'user'][user_id]:
                     continue
-                if id not in self.database['user']:
-                    self.database['user'][id] = dict()
-                self.database['user'][id]['all_data'] = dict()
-                print '\nCrawling:', id
+                if user_id not in self.database['user']:
+                    self.database['user'][user_id] = dict()
+                self.database['user'][user_id]['all_data'] = dict()
+                print '\nCrawling:', user_id
 
                 next_url = 'http://www.zhihu.com/api/v4/members/' \
                            '{0}/{1}?limit=20&offset=0'.format(
-                    id, user_attr)
+                    user_id, user_attr)
             else:
                 print 'Restoring from previous state'
                 user_attr = self.session.get_api_attr(next_url)
                 attr_index = attr_list.index(user_attr)
-                id = root
+                user_id = root
 
             retry_count = 0
             while True:
@@ -83,22 +82,22 @@ class ZhihuCrawler:
 
                 if url_response['paging']['is_start']:
                     print '\nCrawling', user_attr,
-                    self.database['user'][id]['all_data'][
+                    self.database['user'][user_id]['all_data'][
                         user_attr] = dict()
                     try:
-                        self.database['user'][id]['all_data'][user_attr][
+                        self.database['user'][user_id]['all_data'][user_attr][
                             'num'] = url_response['paging']['totals']
                     except KeyError:
-                        self.database['user'][id]['all_data'][user_attr][
+                        self.database['user'][user_id]['all_data'][user_attr][
                             'num'] = 0
 
-                    print 'Total:', self.database['user'][id]['all_data'][
+                    print 'Total:', self.database['user'][user_id]['all_data'][
                         user_attr]['num']
 
-                    self.database['user'][id]['all_data'][user_attr][
+                    self.database['user'][user_id]['all_data'][user_attr][
                         'data'] = list()
 
-                if self.database['user'][id]['all_data'][user_attr][
+                if self.database['user'][user_id]['all_data'][user_attr][
                     'num'] > 5000:
                     print 'Too much url, do it later'
 
@@ -110,13 +109,12 @@ class ZhihuCrawler:
                         user_attr = attr_list[attr_index]
                         next_url = 'http://www.zhihu.com/api/v4/members/' \
                                    '{0}/{1}?limit=20&offset=0'.format(
-                            id, user_attr)
+                            user_id, user_attr)
                         continue
-
 
                 print next_url
                 current_attr_list = \
-                    self.database['user'][id]['all_data'][user_attr][
+                    self.database['user'][user_id]['all_data'][user_attr][
                         'data']
                 # Check if current user follow list should be added to user
                 # queue
@@ -135,7 +133,6 @@ class ZhihuCrawler:
                 else:
                     current_attr_list.extend(url_response['data'])
 
-
                 time.sleep(WAIT_TIME)
 
                 if url_response['paging']['is_end']:
@@ -147,7 +144,7 @@ class ZhihuCrawler:
                         user_attr = attr_list[attr_index]
                         next_url = 'http://www.zhihu.com/api/v4/members/' \
                                    '{0}/{1}?limit=20&offset=0'.format(
-                            id, user_attr)
+                            user_id, user_attr)
                 else:
                     next_url = url_response['paging']['next']
 
