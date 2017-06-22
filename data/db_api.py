@@ -33,7 +33,7 @@ class PostgresProvider:
 
     # Require a tuple containing value to be queried in str
     # Require a str identifies table name
-    def select_from_table(self, values, tb_name):
+    def select_from_table(self, values, tb_name, limit=None):
         if not isinstance(values, tuple) or not isinstance(tb_name, str):
             raise TypeError
         value_string = ''
@@ -45,42 +45,50 @@ class PostgresProvider:
                 raise TypeError
 
         value_string = value_string.rstrip(',')
-        return self.execute(
-            'SELECT {0} FROM {1}'.format(value_string, tb_name))
+        if limit is None:
+            return self.execute(
+                'SELECT {0} FROM {1}'.format(value_string, tb_name))
+        else:
+            return self.execute('SELECT {0} FROM {1} LIMIT {2}'.format(
+                value_string, tb_name, limit))
 
+    # TODO Implement Non-Duplicate Option
     def add_value(self, data, tb_name):
-        key_string = u''
-        value_string = u''
-        for key in data:
-            key_string += u'{0},'.format(unicode(key))
 
-            if isinstance(data[key], str) or isinstance(data[key], unicode):
-                if len(data[key]) != 0:
-                    value_string += u"U&'{0}',".format(
-                        self.clean_character(unicode(data[
-                                                         key]))
-                    )
-                else:
-                    value_string += u'null,'
-            elif isinstance(data[key], bool):
-                value_string += u'{0},'.format(u'true' if data[key] else
-                                               u'false')
-            else:
-                value_string += u'{0},'.format(self.clean_character(unicode(
-                    data[key])))
-
-        key_string = key_string.rstrip(u',')
-        value_string = value_string.rstrip(u',')
+        key_string, value_string = self.clean_string(data)
 
         command = u"""INSERT INTO {0} ({1}) VALUES ({2})""".format(tb_name,
                                                                    key_string,
                                                                    value_string)
+        # if not allow_dup:
+        #     command+=u"""ON CONFLICT UPDATE"""
+
+        self.execute(command)
+
+    def update_value(self, data, condition, tb_name):
+        key_value_string = ''
+
+        for key in data:
+            key_value_string += """{0} = {1},""".format(unicode(key),
+                                                        self.convert_string(
+                                                            data[key]))
+        key_value_string = key_value_string.rstrip(',')
+
+        condition_string = condition
+
+        command = u"""UPDATE {0} SET {1} WHERE {2}""".format(tb_name,
+                                                             key_value_string,
+                                                             condition_string)
+
         self.execute(command)
 
     def create_table(self, keys, tb_name):
         value_string = ''
         for key in keys:
-            value_string += '{0} {1} {2},'.format(key[0], key[1], key[2])
+            for key_item in key:
+                value_string += key_item
+                value_string += ' '
+            value_string += ','
 
         value_string = value_string.rstrip(',')
 
@@ -95,3 +103,25 @@ class PostgresProvider:
         token = token.replace("""\\""", """\\\\""")
         token = token.replace("'", r"''")
         return token
+
+    def convert_string(self, token):
+        if isinstance(token, str) or isinstance(token, unicode):
+            if len(token) != 0:
+                return u"U&'{0}',".format(
+                    self.clean_character(unicode(token))
+                )
+            else:
+                return u'null,'
+        elif isinstance(token, bool):
+            return u'{0},'.format(u'true' if token else u'false')
+        else:
+            return u'{0},'.format(self.clean_character(unicode(token)))
+
+    def clean_string(self, data):
+        key_string = u''
+        value_string = u''
+        for key in data:
+            key_string += u'{0},'.format(unicode(key))
+            value_string += self.convert_string(data[key])
+
+        return key_string.rstrip(u','), value_string.rstrip(u',')
