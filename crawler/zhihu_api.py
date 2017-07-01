@@ -11,13 +11,15 @@ from enum import Enum, unique
 
 try:
     import cookielib
-except:
+except ImportError:
     import http.cookiejar as cookielib
 
 try:
     from PIL import Image
-except:
+except ImportError:
     pass
+
+from zhihu_settings import *
 
 REQUEST_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36',
@@ -50,23 +52,12 @@ class UserAttrAPIStr(Enum):
 class ZhihuSession():
     def __init__(self):
         self.session = requests.session()
-        self.session.cookies = cookielib.LWPCookieJar(filename='cookies')
+        self.cook_dict = dict()
+        self.cook_dict_x = dict()
         self._xsrf = self.get_xsrf()
         self._header_with_xsrf = REQUEST_HEADERS
         self._header_with_xsrf['X-Xsrftoken'] = self._xsrf
-        if not self.is_login():
-            self.login()
-
-        try:
-            self.session.cookies.load(ignore_discard=True)
-            self.cook_dict = dict()
-            for i in list(self.session.cookies):
-                self.cook_dict[i.name] = i.value
-        except:
-            print("Cookie 未能加载")
-
-        self.cook_dict_x = self.cook_dict
-        self.cook_dict_x['_xsrf'] = self._xsrf
+        self.load_cookies()
 
     def get_xsrf(self):
         index_url = 'https://www.zhihu.com'
@@ -81,31 +72,33 @@ class ZhihuSession():
         t = str(int(time.time() * 1000))
         captcha_url = 'https://www.zhihu.com/captcha.gif?r=' + t + "&type=login"
         r = self.session.get(captcha_url, headers=REQUEST_HEADERS)
-        with open('captcha.jpg', 'wb') as f:
+        with open(CAPTCHA_PATH, 'wb') as f:
             f.write(r.content)
             f.close()
         try:
-            im = Image.open('captcha.jpg')
+            im = Image.open(CAPTCHA_PATH)
             im.show()
             im.close()
         except:
             print(
-                u'请到 %s 目录找到captcha.jpg 手动输入' % os.path.abspath('captcha.jpg'))
-        captcha = raw_input("please input the captcha\n>")
+                u'请到 %s 目录找到captcha.jpg 手动输入' % os.path.abspath(CAPTCHA_PATH))
+        captcha = raw_input("Please input the captcha\n>")
         return captcha
 
     def is_login(self):
-        url = "https://www.zhihu.com"
-        login_code = self.session.get(url, headers=REQUEST_HEADERS,
-                                      allow_redirects=False).status_code
+        url = 'http://www.zhihu.com/api/v4/members/lilian-31-77/publications' \
+              '?limit=5&offset=0'
+        login_code = self.session.get(url, headers=REQUEST_HEADERS, cookies=
+        self.cook_dict).status_code
+
         if login_code == 200:
             return True
         else:
             return False
 
     def login(self):
-        if os.path.exists('login_info'):
-            with open('login_info', 'r') as fin:
+        if os.path.exists(ACCOUNT_INFO_PATH):
+            with open(ACCOUNT_INFO_PATH, 'r') as fin:
                 account = fin.readline().strip()
                 password = fin.readline().strip()
             print 'Email:', account
@@ -147,8 +140,30 @@ class ZhihuSession():
 
         self.session.cookies.save()
 
-    def save_login_info(self):
-        pass
+    def load_cookies_file(self):
+        if os.path.exists(COOKIES_PATH):
+            self.session.cookies.load(ignore_discard=True)
+            for i in list(self.session.cookies):
+                self.cook_dict[i.name] = i.value
+
+            self.cook_dict_x = self.cook_dict
+            self.cook_dict_x['_xsrf'] = self._xsrf
+            return True
+        else:
+            return False
+
+    def load_cookies(self):
+        self.session.cookies = cookielib.LWPCookieJar(filename=COOKIES_PATH)
+        if self.load_cookies_file() and self.is_login():
+            return True
+        else:
+            self.login()
+            self.load_cookies_file()
+            if self.is_login():
+                return True
+            else:
+                print "Please check your password"
+                exit(-1)
 
     # TODO check with 404 response
     def get_question_answer_list_raw(self, questionid, start, pagesize):
@@ -210,22 +225,35 @@ class ZhihuSession():
                                       user,
                                       start, pagesize)
 
-    def get_all_userdata(self, user):
+    def get_all_userdata(self, user, has_follow):
         result = dict()
         for name, attr in UserAttrAPIStr.__members__.items():
-            start = 0
+            if not has_follow and (attr.value ==
+                                       UserAttrAPIStr.followees.value
+                                   or attr.value == UserAttrAPIStr.followers.value):
+                continue
+            print 'Crawling:', attr.value,
             result[attr.value] = dict()
             result[attr.value]['data'] = list()
 
             tmp_result = json.loads(self._get_userdata_api(section=attr.value,
                                                            start=0, user=user,
                                                            pagesize=20))
-            result[attr.value]['num'] = tmp_result['paging']['totals']
-            result[attr.value]['data'].extend(tmp_result['data'])
+            try:
+                print 'Total:', tmp_result['paging']['totals']
+            except KeyError:
+                print 'Total: 0'
+            time.sleep(WAIT_TIME)
+
+            if len(tmp_result['data']) != 0:
+                result[attr.value]['num'] = tmp_result['paging']['totals']
+                result[attr.value]['data'].extend(tmp_result['data'])
+            else:
+                result[attr.value]['num'] = 0
 
             while not tmp_result['paging']['is_end']:
                 next_url = tmp_result['paging']['next']
-                time.sleep(3)
+                time.sleep(WAIT_TIME)
                 print next_url
                 try:
                     tmp_result = json.loads(
@@ -234,8 +262,8 @@ class ZhihuSession():
                     result[attr.value]['data'].extend(tmp_result['data'])
                 except requests.exceptions.ConnectionError:
                     print '\n\nError:', next_url
-                    time.sleep(3)
-
+                    time.sleep(WAIT_TIME)
+            print
         return result
 
     def get_article_content_raw(self, article):
@@ -294,35 +322,24 @@ class ZhihuSession():
 
         if cookies is None:
             cookies = self.cook_dict
+        try:
+            result = requests.get(url, headers=headers,
+                                  data=data, cookies=cookies).text
+        except requests.exceptions.ConnectionError:
+            print 'Bad url found, retry after {0}s'.format(
+                str(ERROR_WAIT_TIME))
+            time.sleep(ERROR_WAIT_TIME)
+            result = requests.get(url, headers=headers,
+                                  data=data, cookies=cookies).text
+        return result
 
-        return requests.get(url, headers=headers,
-                            data=data, cookies=cookies).text
+    @staticmethod
+    def get_api_attr(url):
+        return \
+            url.split('www.zhihu.com/api/v4/members/')[1].split('?')[0].split(
+                '/')[1]
 
-
-def main():
-    session = ZhihuSession()
-    # print session.get_all_userdata('san-mu-84-3-42')
-
-
-    # print session.get_article_comments_raw(25891823,0,10)
-
-    # print session.test()
-
-
-    # print session.get_children_topics(19632577)
-    # print session.get_question_answer_list_raw(53568452, 1000, 10)
-    # print session.get_followees_raw('excited-vczh', 0, 2150)
-    print session.get_followers_raw('excited-vczh', 2, 10)
-    # print session.get_asked_questions_raw('excited-vczh', 2, 10)
-    # print session.get_answered_questions_raw('excited-vczh', 2, 10)
-    # print session.get_articles_raw('excited-vczh', 2, 10)
-    # print session.get_followers_raw('niu-yue-lao-li-xiao-chang', 0, 10)
-    # print session.get_question_comments_raw(4087751)
-    # print session.get_answer_comments_raw(49741710, 1)
-    # print session.get_articles_raw('excited-vczh', 0, 10)
-    # print session.get_article_content_raw(24543157)
-    # print session.get_question_watchers_raw(49741710, 1)
-
-
-if __name__ == '__main__':
-    main()
+    @staticmethod
+    def get_user_attr_list():
+        return [attr.value for name, attr in
+                UserAttrAPIStr.__members__.items()]
