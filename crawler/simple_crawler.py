@@ -20,6 +20,16 @@ class ZhihuCrawler:
         self.load_user_queue(using_database)
         self.session = ZhihuSession()
 
+        # self.answer_db = dict()
+        with open('answer_db', 'r') as f:
+            self.answer_db = json.load(f)
+
+        self.question_db = dict()
+        self.question_answer = set()
+        self.author_db = dict()
+        self.user_answer = set()
+        self.user_json = dict()
+
         if not self.session.is_login():
             self.session.login()
         print 'login succeed'
@@ -62,7 +72,7 @@ class ZhihuCrawler:
             while True:
                 self.save_current_url(next_url)
                 try:
-                    url_response = json.loads(self.session.req_get(next_url))
+                    url_response = self.session.req_get(next_url)
                     retry_count = 0
                 except:
                     self.save_user_queue()
@@ -153,6 +163,70 @@ class ZhihuCrawler:
 
             if len(self.user_queue) == 0:
                 break
+
+    def crawl_answer(self, question_id=None, curr_url=None, max_cnt=None):
+        if question_id is not None:
+            next_url = self.session.get_question_url(question_id)
+
+        elif curr_url is not None:
+            next_url = curr_url
+
+        success_count = 0
+        while True:
+            retry_count = 0
+            while True:
+                self.save_current_url(next_url)
+                try:
+                    url_response = self.session.req_get(next_url)
+                    retry_count = 0
+                except:
+                    self.save_data()
+                    self.save_current_url(next_url)
+                    retry_count += 1
+                    self.notifier('Zhihu Crawler',
+                                  '{0} is in a error state'.format(
+                                      next_url))
+
+                    if retry_count > 3:
+                        self.notifier('Zhihu Crawler', 'Exit due to '
+                                                       'previous error '
+                                                       'state')
+                        exit(-1)
+                    continue
+
+                # print next_url
+                success_count += 20
+                for answer_item in url_response['data']:
+                    ans_db_row = {
+                        'id': answer_item['id'],
+                        'created_time': answer_item['created_time'],
+                        'updated_time': answer_item['updated_time'],
+                        'voteup_count': answer_item['voteup_count'],
+                        'is_collapsed': answer_item['is_collapsed'],
+                        'question': answer_item['question']['id'],
+                        'content': answer_item['content'],
+                        'comment_count': answer_item['comment_count'],
+                        'author': answer_item['author']['url_token']
+                    }
+                    self.answer_db[ans_db_row['id']] = ans_db_row
+
+                time.sleep(WAIT_TIME)
+
+                if url_response['paging']['is_end']:
+                    self.save_data()
+                    self.save_user_queue()
+
+                    with open('answer_db', 'w') as f:
+                        json.dump(self.answer_db, f)
+                    return
+                else:
+                    next_url = url_response['paging']['next']
+                print success_count
+
+                if max_cnt is not None and success_count > max_cnt:
+                    with open('answer_db', 'w') as f:
+                        json.dump(self.answer_db, f)
+                    return
 
     def save_data(self):
         with open(USER_DATABASE_PATH, 'w') as f:
