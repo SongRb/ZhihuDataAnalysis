@@ -74,7 +74,6 @@ class ZhihuSession():
         r = self.session.get(captcha_url, headers=REQUEST_HEADERS)
         with open(CAPTCHA_PATH, 'wb') as f:
             f.write(r.content)
-            f.close()
         try:
             im = Image.open(CAPTCHA_PATH)
             im.show()
@@ -310,6 +309,26 @@ class ZhihuSession():
             topicid, idafter)
         return self.req_get(url)
 
+    def get_answers_from_question(self, question_id, limit=0, offset=20):
+        base_url = self.get_question_url(question_id, limit, offset)
+        return self.req_get(base_url)
+
+    def get_question_url(self, question_id, limit=20, offset=0):
+        return "https://www.zhihu.com/api/v4/questions/{0}/answers" \
+               "?include=data%5B*%5D.is_normal%2Cis_collapsed" \
+               "%2Ccollapse_reason%2Cis_sticky%2Ccollapsed_by" \
+               "%2Csuggest_edit%2Ccomment_count%2Ccan_comment%2Ccontent" \
+               "%2Ceditable_content%2Cvoteup_count%2Creshipment_settings" \
+               "%2Ccomment_permission%2Cmark_infos%2Ccreated_time" \
+               "%2Cupdated_time%2Creview_info%2Crelationship" \
+               ".is_authorized%2Cis_author%2Cvoting%2Cis_thanked" \
+               "%2Cis_nothelp%2Cupvoted_followees%3Bdata%5B*%5D.author" \
+               ".follower_count%2Cbadge%5B%3F(" \
+               "type%3Dbest_answerer)%5D.topics&offset={1}&limit={2}&sort_by=default" \
+               "&sort_by=default".format(str(question_id), str(offset),
+                                         str(limit))
+
+
     def req_get(self, url, headers=None, data=None, cookies=None):
 
         if headers is None:
@@ -331,7 +350,7 @@ class ZhihuSession():
             time.sleep(ERROR_WAIT_TIME)
             result = requests.get(url, headers=headers,
                                   data=data, cookies=cookies).text
-        return result
+        return json.loads(result)
 
     @staticmethod
     def get_api_attr(url):
